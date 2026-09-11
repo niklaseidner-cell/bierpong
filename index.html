@@ -348,7 +348,8 @@ function pairFromQueue(q){
 /* ═══════════ SPEICHER ═══════════
    Jedes Ergebnis liegt in einem eigenen Schlüssel. Zwei Leute können also
    gleichzeitig eintragen, ohne sich gegenseitig zu überschreiben. */
-const blankCore=()=>({status:"registration",shareUrl:"",players:[],teams:[],queue:[],matches:{},grandFinal:null,tiny:false,trivial:false});
+const blankCore=()=>({status:"registration",shareUrl:"",players:[],teams:[],queue:[],matches:{},grandFinal:null,tiny:false,trivial:false,
+  casual:{queue:[],match:null,history:[]}});
 let core=blankCore(), results={}, M={};
 let me=null, seenGuide=false, online=true;
 let ui={sheet:null,pick:null,cups:null,photo:null,editLink:false,editName:false,confirm:null};
@@ -426,7 +427,9 @@ async function pullResults(){
     results=out; online=true;
   }catch(e){ online=false; }
 }
-async function pullAll(){ await pullCore(); await pullResults(); recompute(); }
+async function pullAll(){ await pullCore(); await pullResults();
+  if(!core.casual) core.casual={queue:[],match:null,history:[]};
+  recompute(); }
 async function loadMe(){
   try{ const r=await window.storage.get(K_ME,false); if(r&&r.value){ const v=JSON.parse(r.value); me=v.id; seenGuide=!!v.guide; } }catch(e){}
 }
@@ -618,6 +621,120 @@ function wireAdminToggle(){
     if(p.style.display==="none"){ ui.confirm=null; } };
 }
 
+/* ═══════════ NEBENSPIELE ═══════════
+   Wer aus dem Turnier raus ist oder gar nicht mitspielt, meldet sich hier.
+   Sobald vier Leute warten, lost die Seite ein Spiel aus. */
+function myName(){
+  const all=[...core.players,...core.queue,...core.teams.flatMap(t=>t.players),...((core.casual&&core.casual.queue)||[])];
+  const p=all.find(x=>x.id===me);
+  return p?p.name:null;
+}
+/* Die Auslosung darf jedes Handy anstoßen. Damit dabei überall dasselbe
+   herauskommt, wird nicht echt zufällig gemischt, sondern aus der Warteliste
+   selbst abgeleitet — gleiche Liste, gleiches Ergebnis. */
+function hashOf(str){ let h=2166136261>>>0;
+  for(let i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619)>>>0; } return h>>>0; }
+function seededShuffle(arr,seed){
+  const a=arr.slice(); let h=hashOf(seed);
+  for(let i=a.length-1;i>0;i--){ h=(Math.imul(h,1103515245)+12345)>>>0; const j=h%(i+1); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function casualEnsure(){
+  const c=core.casual;
+  if(c.match||c.queue.length<4) return;
+  const seed=c.queue.map(x=>x.id).join("-");
+  for(let att=0;att<60;att++){
+    const pick=seededShuffle(c.queue,seed+"#"+att).slice(0,4);
+    if(forbidden(pick[0].name,pick[1].name)||forbidden(pick[2].name,pick[3].name)) continue;
+    c.match={id:"c"+hashOf(seed).toString(36)+att,a:[pick[0],pick[1]],b:[pick[2],pick[3]]};
+    const ids=new Set(pick.map(x=>x.id));
+    c.queue=c.queue.filter(x=>!ids.has(x.id));
+    return;
+  }
+}
+async function casualJoin(name){
+  await pullAll();
+  const nm=myName()||(name||"").trim();
+  if(!nm){ toast("Bitte einen Namen eingeben."); return; }
+  if(!me){ me=rid(8); await saveMe(); }
+  const c=core.casual;
+  if(c.match&&[...c.match.a,...c.match.b].some(p=>p.id===me)){ toast("Du spielst gerade schon."); return; }
+  if(c.queue.some(p=>p.id===me)){ toast("Du stehst schon auf der Liste."); return; }
+  c.queue.push({id:me,name:nm});
+  casualEnsure();
+  await pushCore(); recompute(); render();
+  toast(core.casual.match&&[...core.casual.match.a,...core.casual.match.b].some(p=>p.id===me)
+    ? "Es geht los, du bist eingeteilt." : "Du stehst auf der Liste.");
+}
+async function casualLeave(){
+  await pullAll();
+  core.casual.queue=core.casual.queue.filter(p=>p.id!==me);
+  await pushCore(); recompute(); render();
+}
+async function casualResult(side){
+  await pullAll();
+  const m=core.casual.match;
+  if(!m){ render(); return; }
+  const win=side==="a"?m.a:m.b, lose=side==="a"?m.b:m.a;
+  if(ui.photo){ try{ await window.storage.set(K_PHOTO+"cas"+m.id,ui.photo,true); }catch(e){} }
+  core.casual.history.unshift({w:win.map(p=>p.name).join(" & "),l:lose.map(p=>p.name).join(" & ")});
+  core.casual.history=core.casual.history.slice(0,8);
+  core.casual.match=null;
+  casualEnsure();
+  await pushCore(); recompute();
+  ui.photo=null; ui.confirm=null;
+  render(); refreshPhotos(); toast("Eingetragen.");
+}
+function casualHTML(){
+  const c=core.casual||{queue:[],match:null,history:[]};
+  const nm=myName();
+  const inQ=c.queue.some(p=>p.id===me);
+  const mineIn=c.match&&[...c.match.a,...c.match.b].some(p=>p.id===me);
+  let body="";
+  if(c.match){
+    const nA=c.match.a.map(p=>p.name).join(" & "), nB=c.match.b.map(p=>p.name).join(" & ");
+    body=`<p>${mineIn?"Du bist dabei.":"Läuft gerade."} Wer gewinnt?</p>
+      <div style="font-family:'Fraunces',serif;font-style:italic;font-size:1.15rem;line-height:1.5;margin-bottom:12px">
+        ${esc(nA)}<br><span style="font-family:Inter,sans-serif;font-style:normal;font-size:.85rem;color:var(--muted)">gegen</span><br>${esc(nB)}</div>
+      <input type="file" accept="image/*" capture="user" id="casCam" class="hidden-file">
+      <button class="btn-quiet" id="casCamBtn">${ui.photo?"Foto ersetzen":"Foto dazu (freiwillig)"}</button>
+      ${ui.photo?`<img class="shot" src="${ui.photo}" alt="Foto vom Nebenspiel">`:""}
+      <button class="btn-quiet" data-cas="a">${ui.confirm==="cas_a"?"Sicher? Noch einmal tippen":esc(nA)+" hat gewonnen"}</button>
+      <button class="btn-quiet" data-cas="b">${ui.confirm==="cas_b"?"Sicher? Noch einmal tippen":esc(nB)+" hat gewonnen"}</button>`;
+  } else {
+    const need=Math.max(0,4-c.queue.length);
+    body=`<p>Raus aus dem Turnier, aber noch nicht fertig? Melde dich hier. Sobald vier Leute warten, wird ausgelost.</p>
+      ${c.queue.length?`<div class="chips">${c.queue.map(p=>`<span class="chip${p.id===me?" me":""}">${esc(p.name)}</span>`).join("")}</div>`:""}
+      <div class="meta">${c.queue.length} ${c.queue.length===1?"wartet":"warten"}${need?` — noch ${need}, dann geht es los`:""}</div>
+      ${inQ?`<button class="btn-quiet" id="casLeave">Doch nicht, streich mich</button>`
+           :(nm?`<button class="btn-primary" id="casJoin">Ich will weiterspielen</button>`
+               :`<div style="margin-top:10px"><input type="text" id="casNm" autocomplete="off" placeholder="Dein Vorname" maxlength="20" autocapitalize="words">
+                 <button class="btn-primary" id="casJoin">Ich will weiterspielen</button></div>`)}`;
+  }
+  const hist=(c.history&&c.history.length)
+    ? `<div style="margin-top:16px">${c.history.slice(0,5).map(h=>
+        `<div class="rank"><span style="color:var(--win)">${esc(h.w)}</span><span class="rec">schlägt ${esc(h.l)}</span></div>`).join("")}</div>`
+    : "";
+  return `<div class="card" style="margin-top:26px"><h2>Nebenspiele</h2>${body}${hist}</div>`;
+}
+function wireCasual(){
+  const j=document.getElementById("casJoin");
+  if(j) j.onclick=()=>{ const el=document.getElementById("casNm"); casualJoin(el?el.value:""); };
+  const nmEl=document.getElementById("casNm");
+  if(nmEl) nmEl.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); casualJoin(nmEl.value); } };
+  const l=document.getElementById("casLeave");
+  if(l) l.onclick=casualLeave;
+  const cam=document.getElementById("casCam"), cb=document.getElementById("casCamBtn");
+  if(cb&&cam){ cb.onclick=()=>cam.click();
+    cam.onchange=async()=>{ const f=cam.files&&cam.files[0]; if(!f) return;
+      try{ ui.photo=await compress(f); render(); }catch(e){ toast("Foto konnte nicht verarbeitet werden."); } }; }
+  document.querySelectorAll("[data-cas]").forEach(el=>el.onclick=()=>{
+    const side=el.getAttribute("data-cas"), key="cas_"+side;
+    if(ui.confirm!==key){ ui.confirm=key; render(); return; }
+    ui.confirm=null; casualResult(side);
+  });
+}
+
 /* ═══════════ RENDER ═══════════ */
 function render(){
   const c=document.getElementById("content"), ov=document.getElementById("overlay");
@@ -791,7 +908,7 @@ function renderRunning(c){
     let mineTxt;
     if(myPos===0) mineTxt=`Ihr seid dran. Viel Erfolg.`;
     else if(myPos>0) mineTxt=`Euer Spiel ist Nummer ${myPos+1} in der Reihe.`;
-    else if(!stillIn(mine)&&l>=2) mineTxt=`Zwei Niederlagen, für euch ist das Turnier durch. Bleibt am Tisch und feuert an.`;
+    else if(!stillIn(mine)&&l>=2) mineTxt=`Zwei Niederlagen, für euch ist das Turnier durch. Weiter unten kannst du dich für ein Nebenspiel melden.`;
     else mineTxt=`Euer nächster Gegner steht noch nicht fest.`;
     head+=`<div class="upnext"><b>${esc(teamName(mine))}</b> — ${winsOf(mine)} Siege, ${l} ${l===1?"Niederlage":"Niederlagen"}. ${mineTxt}</div>`;
   }
@@ -813,7 +930,7 @@ function renderRunning(c){
   </div>`;
 
   c.innerHTML=(online?"":'<div class="offline">Keine Verbindung zum Turnier. Seite neu laden.</div>')
-    + head + brackets + galleryHTML() + late
+    + head + brackets + casualHTML() + galleryHTML() + late
     + `<a class="adminlink" id="al">Admin</a>
        <div id="ap" style="display:none;margin-top:12px">${adminHTML("Korrekturen",[
          {id:"undo",label:"Letztes Ergebnis zurücknehmen",ask:true,
@@ -830,6 +947,7 @@ function renderRunning(c){
   wireAdminToggle();
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
   wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
+  wireCasual();
   const gb=document.getElementById("galBtn");
   if(gb) gb.onclick=()=>{ photoOpen=!photoOpen; render(); if(photoOpen) refreshPhotos(); };
 
@@ -904,6 +1022,7 @@ async function renderDone(c){
   c.innerHTML=`<div class="champ"><div class="label">Turniersieger</div><h1>${esc(teamName(champ)||"—")}</h1></div>
     <div class="card"><h2>Endstand</h2>${standings().map((r,i)=>
       `<div class="rank"><span class="pos">${i+1}</span><span>${esc(teamName(r.id))}</span><span class="rec">${r.w}:${r.l}</span></div>`).join("")}</div>
+    ${casualHTML()}
     <div class="card"><h2>Die Beweisfotos</h2><div class="gallery" id="g"></div><p id="gs">Wird geladen …</p></div>
     <a class="adminlink" id="al">Admin</a>
     <div id="ap" style="display:none;margin-top:12px">${adminHTML("Admin",[
@@ -914,6 +1033,7 @@ async function renderDone(c){
     ])}</div>`;
   wireAdminToggle();
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
+  wireCasual();
   const g=document.getElementById("g"), gs=document.getElementById("gs");
   try{
     const l=await window.storage.list(K_PHOTO,true);
@@ -937,6 +1057,10 @@ async function tick(){
   await pullAll();
   const nPhotos=photoKeys.length;
   if(core.status!=="registration") await refreshPhotos();
+  if(core.status!=="registration"&&core.casual&&!core.casual.match&&core.casual.queue.length>=4){
+    casualEnsure();
+    if(core.casual.match){ await pushCore(); render(); return; }
+  }
   if(JSON.stringify([core,Object.keys(results).sort()])!==before || photoKeys.length!==nPhotos) render();
 }
 window.addEventListener("resize",()=>requestAnimationFrame(drawLinks));
