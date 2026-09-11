@@ -490,6 +490,33 @@ function formLate(){
     core.queue=core.queue.filter((_,k)=>k!==i&&k!==j);
   }
 }
+async function addPlayerByAdmin(name){
+  name=(name||"").trim(); if(!name){ toast("Bitte einen Namen eingeben."); return; }
+  await pullAll();
+  if([...core.players,...core.queue].some(p=>norm(p.name)===norm(name))){ toast("Den Namen gibt es schon."); return; }
+  const p={id:rid(8),name:name};
+  if(core.status==="registration") core.players.push(p);
+  else { core.queue.push(p); formLate(); }
+  await pushCore(); recompute(); render(); toast(name+" ist dabei.");
+}
+async function addDemoPlayers(){
+  await pullAll();
+  const pool=["Test-Anna","Test-Ben","Test-Carla","Test-David","Test-Eva","Test-Felix","Test-Greta","Test-Hugo"];
+  let added=0;
+  for(const n of pool){
+    if(core.players.length>=12) break;
+    if(core.players.some(p=>norm(p.name)===norm(n))) continue;
+    core.players.push({id:rid(8),name:n}); added++;
+    if(added>=6) break;
+  }
+  await pushCore(); recompute(); render(); toast(added+" Testnamen angelegt.");
+}
+async function removePlayer(id){
+  await pullAll();
+  core.players=core.players.filter(p=>p.id!==id);
+  core.queue=core.queue.filter(p=>p.id!==id);
+  await pushCore(); recompute(); render();
+}
 async function startTournament(){
   await pullAll();
   if(core.players.length<4){ toast("Mindestens 4 Spieler für zwei Teams."); return; }
@@ -534,7 +561,7 @@ async function resetAll(){
 }
 /* Admin-Bereich. Browser-Dialoge sind in der eingebetteten Ansicht gesperrt,
    deshalb läuft alles über Eingabefelder direkt auf der Seite. */
-function adminHTML(title,actions){
+function adminHTML(title,actions,extra){
   if(!adminOk) return `<div class="card"><h2>${title}</h2>
     <p>Zum Freischalten den Admin-Code eingeben.</p>
     <div><input type="text" id="adc" autocomplete="off" placeholder="Admin-Code" autocapitalize="characters">
@@ -542,7 +569,7 @@ function adminHTML(title,actions){
   return `<div class="card"><h2>${title}</h2>${actions.map(a=>
     (a.note?`<p>${a.note}</p>`:"")+
     `<button class="${a.cls||"btn-quiet"}" data-act="${a.id}"${a.off?" disabled":""}>${
-      ui.confirm===a.id?"Sicher? Noch einmal tippen":a.label}</button>`).join("")}</div>`;
+      ui.confirm===a.id?"Sicher? Noch einmal tippen":a.label}</button>`).join("")}${extra||""}</div>`;
 }
 function wireAdmin(handlers){
   wireAction("adc","adBtn",()=>{
@@ -608,7 +635,8 @@ function renderRegistration(c){
          :`<div><input type="text" id="nm" autocomplete="off" placeholder="Dein Vorname" maxlength="20" autocapitalize="words">
            <button class="btn-primary" id="joinBtn">Mitmachen</button></div>`}
     <div class="meta">${ps.length} angemeldet${ps.length%2===1?" — ungerade Zahl, ein Team spielt zu dritt":""}</div>
-    <div class="chips">${ps.map(p=>`<span class="chip${p.id===me?" me":""}">${esc(p.name)}</span>`).join("")}</div>
+    <div class="chips">${ps.map(p=>`<span class="chip${p.id===me?" me":""}">${esc(p.name)}${
+      adminOk?` <a data-del="${p.id}" style="cursor:pointer;opacity:.5;padding-left:4px">✕</a>`:""}</span>`).join("")}</div>
   </div>
   <div class="card">
     <h2>QR-Code zum Ausdrucken</h2>
@@ -620,8 +648,13 @@ function renderRegistration(c){
   <a class="adminlink" id="al">Admin</a>
   <div id="ap" style="display:none;margin-top:12px">${adminHTML("Turnier starten",[
     {id:"start",label:"Auslosen und starten",cls:"btn-primary",off:ps.length<4,
-     note:teams>1?`${teams} Teams, ${games} Spiele, bei rund ${MIN_PER_GAME} Minuten pro Spiel etwa ${Math.round(games*MIN_PER_GAME/60*10)/10} Stunden.`:"Noch zu wenige Spieler — es braucht mindestens vier."}
-  ])}</div>`;
+     note:teams>1?`${teams} Teams, ${games} Spiele, bei rund ${MIN_PER_GAME} Minuten pro Spiel etwa ${Math.round(games*MIN_PER_GAME/60*10)/10} Stunden.`:"Noch zu wenige Spieler — es braucht mindestens vier."},
+    {id:"demo",label:"6 Testnamen anlegen",
+     note:"Zum Ausprobieren allein: legt sechs Testspieler an. Vor der Party mit dem Zurücksetzen unten wieder entfernen."}
+  ],`<p style="margin-top:16px">Gast ohne Handy? Trag ihn hier von Hand ein.</p>
+     <div><input type="text" id="addnm" autocomplete="off" placeholder="Name" maxlength="20" autocapitalize="words">
+     <button class="btn-quiet" id="addBtn">Spieler hinzufügen</button></div>
+     <p style="margin-top:12px;opacity:.7">Ein ✕ neben einem Namen entfernt ihn wieder.</p>`)}</div>`;
   wireAction("nm","joinBtn",()=>{ const el=document.getElementById("nm"); if(el) join(el.value); });
   const rn=document.getElementById("rn");
   if(rn) rn.onclick=()=>{ ui.editName=true; render(); };
@@ -635,7 +668,12 @@ function renderRegistration(c){
     ui.editName=false; recompute(); render();
   });
   wireAdminToggle();
-  wireAdmin({ start:{run:()=>{ if(ps.length<4){ toast("Mindestens 4 Spieler."); return; } startTournament(); }} });
+  wireAdmin({
+    start:{run:()=>{ if(ps.length<4){ toast("Mindestens 4 Spieler."); return; } startTournament(); }},
+    demo:{run:addDemoPlayers}
+  });
+  wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
+  document.querySelectorAll("[data-del]").forEach(el=>el.onclick=()=>removePlayer(el.getAttribute("data-del")));
   const sl=document.getElementById("setlink");
   if(sl) sl.onclick=()=>{ ui.editLink=true; render(); };
   wireLinkForm();
@@ -755,13 +793,16 @@ function renderRunning(c){
           note:"Falsch getippt? Das zuletzt eingetragene Ergebnis lässt sich zurücknehmen."},
          {id:"reset",label:"Turnier komplett zurücksetzen",cls:"btn-danger",ask:true,
           note:"Löscht Teams, Turnierbaum und alle Fotos. Der QR-Link bleibt erhalten."}
-       ])}</div>`;
+       ],`<p style="margin-top:16px">Nachzügler ohne Handy von Hand auf die Nachrückerliste setzen:</p>
+          <div><input type="text" id="addnm" autocomplete="off" placeholder="Name" maxlength="20" autocapitalize="words">
+          <button class="btn-quiet" id="addBtn">Hinzufügen</button></div>`)}</div>`;
 
   c.querySelectorAll("[data-open-id]").forEach(el=>el.onclick=()=>openSheet(el.getAttribute("data-open-id")));
   c.querySelectorAll('.node[data-open="1"]').forEach(el=>el.onclick=()=>openSheet(el.getAttribute("data-id")));
   wireAction("lnm","lateBtn",()=>{ const el=document.getElementById("lnm"); if(el) join(el.value); });
   wireAdminToggle();
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
+  wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
 
   requestAnimationFrame(drawLinks);
 
