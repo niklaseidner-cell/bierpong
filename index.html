@@ -59,6 +59,7 @@ button:disabled{opacity:.3;cursor:not-allowed}
 .table-card{background:linear-gradient(158deg,#2d2517,#1c212b 64%);border:1px solid var(--amber-deep);border-radius:var(--r);padding:20px;margin-bottom:12px}
 .table-card .kicker{color:var(--amber);font-size:.82rem;margin-bottom:10px}
 .table-card .pair{font-family:'Fraunces',serif;font-size:1.32rem;font-style:italic;line-height:1.25}
+.sub-names{color:var(--muted);font-size:.82rem;margin-top:2px}
 .table-card .mid{color:var(--muted);font-size:.85rem;margin:5px 0}
 .table-card .note{color:var(--muted);font-size:.9rem;line-height:1.5;margin-top:4px}
 .you-flag{display:inline-block;background:var(--amber);color:#1a1305;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:5px;margin-bottom:10px}
@@ -122,8 +123,34 @@ button:disabled{opacity:.3;cursor:not-allowed}
 .adminlink{display:block;text-align:center;color:var(--muted);font-size:.83rem;margin-top:24px;text-decoration:underline;cursor:pointer}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--surface-2);border:1px solid var(--line);padding:11px 18px;border-radius:999px;font-size:.87rem;opacity:0;pointer-events:none;transition:opacity .25s;z-index:90;max-width:90vw;text-align:center}
 .toast.show{opacity:1}
+/* Große Ansicht für Fernseher oder Tablet */
+.tv{max-width:none;padding:4vh 4vw;text-align:center}
+.tv .lbl{color:var(--amber);font-size:2.2vw;letter-spacing:.02em;margin-bottom:2vh}
+.tv .big{font-family:'Fraunces',Georgia,serif;font-style:italic;font-weight:600;font-size:6.5vw;line-height:1.08}
+.tv .who{color:var(--muted);font-size:2vw;margin-top:.6vh}
+.tv .vs{color:var(--muted);font-size:2.4vw;margin:2vh 0}
+.tv .queue{margin-top:6vh;color:var(--muted);font-size:2.1vw;line-height:1.7}
+.tv .queue b{color:var(--cream)}
+.tv .idle{font-size:3vw;color:var(--muted);margin-top:8vh}
 .offline{background:var(--out);color:#fff;text-align:center;font-size:.82rem;padding:7px;border-radius:8px;margin-bottom:12px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Plakat zum Ausdrucken */
+#poster{display:none}
+@media print{
+  body{background:#fff!important;color:#000!important}
+  .wrap,#overlay,.toast{display:none!important}
+  #poster{display:block;text-align:center;font-family:'Inter',sans-serif;color:#000;padding:14mm 12mm}
+  #poster h1{font-family:'Fraunces',Georgia,serif;font-size:44pt;line-height:1;margin:0 0 4mm;font-weight:600}
+  #poster .sub{font-size:15pt;color:#444;margin-bottom:10mm}
+  #poster .qrbox{display:inline-block;padding:6mm;border:1.5pt solid #000;border-radius:4mm}
+  #poster .call{font-size:19pt;font-weight:700;margin:9mm 0 3mm}
+  #poster .url{font-size:11pt;color:#555;word-break:break-all;margin-bottom:9mm}
+  #poster ol{display:inline-block;text-align:left;font-size:13pt;line-height:1.6;max-width:130mm;margin:0;padding-left:6mm}
+  #poster li{margin-bottom:2.5mm}
+  #poster .foot{margin-top:10mm;font-size:11pt;color:#555}
+  @page{size:A4 portrait;margin:0}
+}
 </style>
 </head>
 <body>
@@ -131,6 +158,7 @@ button:disabled{opacity:.3;cursor:not-allowed}
   <div class="masthead"><h1>Bierpong Turnier</h1><div class="sub">Niklas' Geburtstag</div></div>
   <div id="content"></div>
 </div>
+<div id="poster"></div>
 <div id="overlay"></div>
 <div class="toast" id="toast"></div>
 
@@ -195,6 +223,13 @@ function rid(n=6){ let s=""; for(let i=0;i<n;i++) s+=A[Math.floor(Math.random()*
 const norm=s=>(s||"").trim().toLowerCase();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function nextPow2(n){ let p=1; while(p<n) p*=2; return p; }
+const TEAM_NAMES=["Becherbrigade","Die Eppendorfer Elite","Schaumschläger","Die Aufsetzer","Tischkante",
+"Hopfen und Malz","Die Zielwassertrinker","Vollpfosten","Die Randgruppe","Bierernst","Pingpongpiraten",
+"Sturmflut","Die Zitterhände","Kurze Bahn","Die Unbestechlichen","Elbschlick","Die Trinkfesten","Restalkohol",
+"Die Wurfbude","Halbe Portion","Käptn Becher","Die Tischherren","Schluckspechte","Die Präzisionsschützen",
+"Zielsicher","Bierdeckel","Die Letzte Runde","Schaumkrone","Die Hinterhältigen","Promillegrenze",
+"Die Standfesten","Feuchte Fracht","Die Spülmaschine","Nordwand","Die Fehlwürfe","Rückenwind",
+"Die Nachbrenner","Tischdecke","Die Wurfmaschinen","Anstoß"];
 function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function forbidden(n1,n2){
   const a=norm(n1),b=norm(n2);
@@ -367,6 +402,23 @@ async function refreshPhotos(){
   }
   photoLoading=false; render();
 }
+async function downloadAllPhotos(){
+  const keys=photoKeys.slice();
+  if(!keys.length){ toast("Es gibt noch keine Fotos."); return; }
+  toast(keys.length+" Fotos werden gespeichert …");
+  let n=0;
+  for(const k of keys){
+    let data=photoCache[k];
+    if(!data){ try{ const r=await window.storage.get(k,true); if(r&&r.value){ data=r.value; photoCache[k]=data; } }catch(e){} }
+    if(!data) continue;
+    n++;
+    const a=document.createElement("a");
+    a.href=data; a.download="bierpong-"+String(n).padStart(2,"0")+".jpg";
+    document.body.appendChild(a); a.click(); a.remove();
+    await new Promise(r=>setTimeout(r,350));
+  }
+  toast(n+" Fotos gespeichert.");
+}
 function galleryHTML(){
   const n=photoKeys.length;
   if(!n) return `<div class="card" style="margin-top:26px"><h2>Fotos</h2>
@@ -375,10 +427,29 @@ function galleryHTML(){
   return `<div class="card" style="margin-top:26px"><h2>Fotos</h2>
     <p>${n} ${n===1?"Bild":"Bilder"} bisher.</p>
     <button class="btn-quiet" id="galBtn">${photoOpen?"Ausblenden":"Anzeigen"}</button>
+    <button class="btn-quiet" id="dlBtn">Alle Fotos herunterladen</button>
     ${photoOpen?`${shown.length?`<div class="gallery">${shown.map(k=>`<img src="${photoCache[k]}" alt="Foto vom Spiel">`).join("")}</div>`:""}
       ${photoLoading?`<p style="margin-top:10px">Wird geladen …</p>`:""}`:""}
   </div>`;
 }
+function buildPoster(){
+  const el=document.getElementById("poster");
+  el.innerHTML=`<h1>Bierpong Turnier</h1>
+    <div class="sub">Niklas' Geburtstag</div>
+    <div class="qrbox"><div id="pqr"></div></div>
+    <div class="call">Scannen und eintragen</div>
+    <div class="url">${esc(effUrl())}</div>
+    <ol>
+      <li>Handykamera auf den Code halten, Vorname eintragen.</li>
+      <li>Gespielt wird zu zweit. Eine Niederlage ist noch kein Aus — erst die zweite.</li>
+      <li>Die Seite sagt dir, wer gerade am Tisch ist und wer danach kommt.</li>
+      <li>Nach jedem Spiel ein Foto von allen vieren, dann den Sieger eintragen.</li>
+    </ol>
+    <div class="foot">Kein Konto, keine App. Einfach scannen.</div>`;
+  try{ new QRCode(document.getElementById("pqr"),
+    {text:effUrl(),width:300,height:300,colorDark:"#000000",colorLight:"#ffffff"}); }catch(e){}
+}
+function printPoster(){ buildPoster(); setTimeout(()=>window.print(),350); }
 function effUrl(){ return core.shareUrl || (location.origin+location.pathname); }
 function linkFormHTML(){
   return `<div><input type="text" id="lki" inputmode="url" autocomplete="off" placeholder="https://…" value="${esc(effUrl())}">
@@ -455,7 +526,11 @@ const teamOf=id=>core.teams.find(t=>t.id===id);
 function teamName(id){
   if(id===null) return "Freilos";
   if(id===undefined) return null;
-  const t=teamOf(id); return t?t.players.map(p=>p.name).join(" & "):"?";
+  const t=teamOf(id); if(!t) return "?";
+  return t.nick || t.players.map(p=>p.name).join(" & ");
+}
+function teamPlayers(id){
+  const t=teamOf(id); return t?t.players.map(p=>p.name).join(" & "):"";
 }
 function myTeamId(){ if(!me) return null; const t=core.teams.find(t=>t.players.some(p=>p.id===me)); return t?t.id:null; }
 function readyMatches(){
@@ -512,7 +587,10 @@ function formLate(){
   while(core.queue.length>=2&&g++<20){
     const pr=pairFromQueue(core.queue); if(!pr) break;
     const [i,j]=pr;
-    const t={id:"t"+rid(6),players:[core.queue[i],core.queue[j]]};
+    const used=new Set(core.teams.map(x=>x.nick));
+    const free=TEAM_NAMES.filter(n=>!used.has(n));
+    const t={id:"t"+rid(6),players:[core.queue[i],core.queue[j]],
+             nick: free.length?shuffle(free)[0]:("Nachrücker "+(core.teams.length+1))};
     if(!graft(core,results,t.id)) break;
     core.teams.push(t);
     core.queue=core.queue.filter((_,k)=>k!==i&&k!==j);
@@ -550,6 +628,8 @@ async function startTournament(){
   if(core.players.length<4){ toast("Mindestens 4 Spieler für zwei Teams."); return; }
   const teams=formTeams(core.players);
   if(!teams){ toast("Auslosung fehlgeschlagen. Nochmal versuchen."); return; }
+  const pool=shuffle(TEAM_NAMES);
+  teams.forEach((t,i)=>{ t.nick = pool[i] || ("Team "+(i+1)); });
   const st=buildStructure(teams.map(t=>t.id));
   core.teams=teams; core.queue=[]; core.matches=st.matches;
   core.grandFinal=st.grandFinal; core.tiny=!!st.tiny; core.trivial=!!st.trivial;
@@ -619,6 +699,32 @@ function wireAdminToggle(){
   a.onclick=()=>{ const p=document.getElementById("ap");
     p.style.display=p.style.display==="none"?"block":"none";
     if(p.style.display==="none"){ ui.confirm=null; } };
+}
+
+/* ═══════════ HAUSREGELN ═══════════ */
+const HOUSE_RULES=[
+  ["Ellenbogen hinter der Tischkante","Beim Wurf muss der Ellenbogen hinter der Kante bleiben. Wer sich vorbeugt, wirft noch einmal — der Treffer zählt nicht."],
+  ["Bouncer zählt doppelt","Wer den Ball erst auf den Tisch oder den Boden aufsetzen lässt und trifft, nimmt zwei Becher. Die Gegner dürfen den Ball nach dem Aufsetzen wegschlagen."],
+  ["Explosion","Landen beide Bälle im selben Becher, müssen alle direkt anliegenden Becher mitgetrunken werden."],
+  ["Sniper","Einmal pro Team und Spiel. Vorher laut \"Sniper\" rufen und einen Becher ansagen. Trifft man genau diesen, nimmt man einen zweiten Becher dazu. Daneben heißt: Chance verbraucht."],
+  ["Beide treffen, beide nochmal","Treffen beide Spieler eines Teams in derselben Runde, bekommt das Team die Bälle zurück und wirft erneut."],
+  ["Becher rücken","Ab sechs, drei und einem verbleibenden Becher wird auf Ansage neu zusammengeschoben."],
+  ["Nachwurf am Ende","Ist der letzte Becher versenkt, bekommt das andere Team noch Würfe zum Ausgleich. Gelingt er, geht es in die Verlängerung mit drei Bechern."],
+  ["Getroffen ist getrunken","Der Becher wird sofort geleert und vom Tisch genommen. Nicht sammeln."],
+  ["Wer nicht trinkt, trinkt Wasser","Niemand muss Alkohol trinken. Wasser oder Saft im Becher ist völlig in Ordnung und zählt genauso."]
+];
+let rulesOpen=false;
+function rulesHTML(){
+  return `<div class="card"><h2>Hausregeln</h2>
+    <button class="btn-quiet" id="rulesBtn" style="margin-top:0">${rulesOpen?"Zuklappen":"Regeln anzeigen"}</button>
+    ${rulesOpen?`<div style="margin-top:14px">${HOUSE_RULES.map(([t,d])=>
+      `<div style="margin-bottom:14px"><div style="font-weight:600;font-size:.95rem">${esc(t)}</div>
+       <div style="color:var(--muted);font-size:.9rem;line-height:1.5;margin-top:2px">${esc(d)}</div></div>`).join("")}</div>`:""}
+  </div>`;
+}
+function wireRules(){
+  const b=document.getElementById("rulesBtn");
+  if(b) b.onclick=()=>{ rulesOpen=!rulesOpen; render(); };
 }
 
 /* ═══════════ NEBENSPIELE ═══════════
@@ -736,9 +842,46 @@ function wireCasual(){
 }
 
 /* ═══════════ RENDER ═══════════ */
+function renderTV(c){
+  document.querySelector(".masthead").style.display="none";
+  document.querySelector(".wrap").classList.add("tv");
+  const ready=readyMatches(), t=ready[0];
+  const cas=core.casual&&core.casual.match;
+  if(core.status==="done"){
+    const champ=championOf(core,M);
+    c.innerHTML=`<div class="lbl">Turniersieger</div>
+      <div class="big">${esc(teamName(champ)||"—")}</div>
+      <div class="who">${esc(teamPlayers(champ))}</div>
+      ${cas?`<div class="queue">Nebenspiel: <b>${esc(cas.a.map(p=>p.name).join(" & "))}</b> gegen <b>${esc(cas.b.map(p=>p.name).join(" & "))}</b></div>`:""}`;
+    return;
+  }
+  if(core.status==="registration"){
+    c.innerHTML=`<div class="lbl">Anmeldung läuft</div>
+      <div class="big">${core.players.length}</div>
+      <div class="who">${core.players.length===1?"Spieler angemeldet":"Spieler angemeldet"}</div>
+      <div class="queue">${core.players.map(p=>esc(p.name)).join(" · ")}</div>`;
+    return;
+  }
+  if(!t){
+    c.innerHTML=`<div class="lbl">Gerade kein Spiel bereit</div>
+      <div class="idle">Alle offenen Partien warten noch auf ein Ergebnis.</div>
+      ${cas?`<div class="queue">Nebenspiel läuft: <b>${esc(cas.a.map(p=>p.name).join(" & "))}</b> gegen <b>${esc(cas.b.map(p=>p.name).join(" & "))}</b></div>`:""}`;
+    return;
+  }
+  const q=ready.slice(1,4);
+  c.innerHTML=`<div class="lbl">Jetzt am Tisch</div>
+    <div class="big">${esc(teamName(t.teamAId))}</div>
+    <div class="who">${esc(teamPlayers(t.teamAId))}</div>
+    <div class="vs">gegen</div>
+    <div class="big">${esc(teamName(t.teamBId))}</div>
+    <div class="who">${esc(teamPlayers(t.teamBId))}</div>
+    ${q.length?`<div class="queue">Danach: ${q.map(m=>`<b>${esc(teamName(m.teamAId))}</b> gegen <b>${esc(teamName(m.teamBId))}</b>`).join("  ·  ")}</div>`:""}
+    ${cas?`<div class="queue">Nebenspiel: <b>${esc(cas.a.map(p=>p.name).join(" & "))}</b> gegen <b>${esc(cas.b.map(p=>p.name).join(" & "))}</b></div>`:""}`;
+}
 function render(){
   const c=document.getElementById("content"), ov=document.getElementById("overlay");
   ov.innerHTML="";
+  if(location.hash==="#tv"){ renderTV(c); return; }
   if(ui.sheet) renderSheet(ov);
   if(!seenGuide){ renderGuide(c); return; }
   if(core.status==="registration") renderRegistration(c);
@@ -787,8 +930,10 @@ function renderRegistration(c){
     <p>Scannen führt direkt hierher, auf iPhone und Android gleichermaßen.</p>
     <div class="qr-wrap"><div class="qr" id="qr"></div></div>
     <div class="link">${esc(effUrl())}</div>
+    <button class="btn-primary" id="printBtn">Plakat drucken</button>
     ${ui.editLink?linkFormHTML():`<button class="btn-quiet" id="setlink">Andere Adresse verwenden</button>`}
   </div>
+  ${rulesHTML()}
   <a class="adminlink" id="al">Admin</a>
   <div id="ap" style="display:none;margin-top:12px">${adminHTML("Turnier starten",[
     {id:"start",label:"Auslosen und starten",cls:"btn-primary",off:ps.length<4,
@@ -798,7 +943,9 @@ function renderRegistration(c){
   ],`<p style="margin-top:16px">Gast ohne Handy? Trag ihn hier von Hand ein.</p>
      <div><input type="text" id="addnm" autocomplete="off" placeholder="Name" maxlength="20" autocapitalize="words">
      <button class="btn-quiet" id="addBtn">Spieler hinzufügen</button></div>
-     <p style="margin-top:12px;opacity:.7">Ein ✕ neben einem Namen entfernt ihn wieder.</p>`)}</div>`;
+     <p style="margin-top:12px;opacity:.7">Ein ✕ neben einem Namen entfernt ihn wieder.</p>
+     <p style="margin-top:16px">Fernseher oder Tablet in der Nähe? Diese Adresse zeigt nur groß an, wer dran ist:</p>
+     <div class="link" style="text-align:left">${esc(effUrl()+"#tv")}</div>`)}</div>`;
   wireAction("nm","joinBtn",()=>{ const el=document.getElementById("nm"); if(el) join(el.value); });
   const rn=document.getElementById("rn");
   if(rn) rn.onclick=()=>{ ui.editName=true; render(); };
@@ -816,8 +963,11 @@ function renderRegistration(c){
     start:{run:()=>{ if(ps.length<4){ toast("Mindestens 4 Spieler."); return; } startTournament(); }},
     demo:{run:addDemoPlayers}
   });
+  wireRules();
   wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
   document.querySelectorAll("[data-del]").forEach(el=>el.onclick=()=>removePlayer(el.getAttribute("data-del")));
+  const pb=document.getElementById("printBtn");
+  if(pb) pb.onclick=printPoster;
   const sl=document.getElementById("setlink");
   if(sl) sl.onclick=()=>{ ui.editLink=true; render(); };
   wireLinkForm();
@@ -892,8 +1042,10 @@ function renderRunning(c){
       <div class="kicker">Jetzt am Tisch</div>
       ${amIn?'<div class="you-flag">Ihr seid dran</div>':''}
       <div class="pair">${esc(teamName(table.teamAId))}</div>
+      <div class="sub-names">${esc(teamPlayers(table.teamAId))}</div>
       <div class="mid">gegen</div>
       <div class="pair">${esc(teamName(table.teamBId))}</div>
+      <div class="sub-names">${esc(teamPlayers(table.teamBId))}</div>
       <button class="btn-primary" data-open-id="${table.id}">Ergebnis eintragen</button>
     </div>`;
     const q=ready.slice(1,4);
@@ -910,7 +1062,7 @@ function renderRunning(c){
     else if(myPos>0) mineTxt=`Euer Spiel ist Nummer ${myPos+1} in der Reihe.`;
     else if(!stillIn(mine)&&l>=2) mineTxt=`Zwei Niederlagen, für euch ist das Turnier durch. Weiter unten kannst du dich für ein Nebenspiel melden.`;
     else mineTxt=`Euer nächster Gegner steht noch nicht fest.`;
-    head+=`<div class="upnext"><b>${esc(teamName(mine))}</b> — ${winsOf(mine)} Siege, ${l} ${l===1?"Niederlage":"Niederlagen"}. ${mineTxt}</div>`;
+    head+=`<div class="upnext"><b>${esc(teamName(mine))}</b> <span style="opacity:.65">(${esc(teamPlayers(mine))})</span> — ${winsOf(mine)} Siege, ${l} ${l===1?"Niederlage":"Niederlagen"}. ${mineTxt}</div>`;
   }
 
   const brackets = (core.tiny||core.trivial)
@@ -930,7 +1082,7 @@ function renderRunning(c){
   </div>`;
 
   c.innerHTML=(online?"":'<div class="offline">Keine Verbindung zum Turnier. Seite neu laden.</div>')
-    + head + brackets + casualHTML() + galleryHTML() + late
+    + head + brackets + casualHTML() + galleryHTML() + rulesHTML() + late
     + `<a class="adminlink" id="al">Admin</a>
        <div id="ap" style="display:none;margin-top:12px">${adminHTML("Korrekturen",[
          {id:"undo",label:"Letztes Ergebnis zurücknehmen",ask:true,
@@ -939,7 +1091,9 @@ function renderRunning(c){
           note:"Löscht Teams, Turnierbaum und alle Fotos. Der QR-Link bleibt erhalten."}
        ],`<p style="margin-top:16px">Nachzügler ohne Handy von Hand auf die Nachrückerliste setzen:</p>
           <div><input type="text" id="addnm" autocomplete="off" placeholder="Name" maxlength="20" autocapitalize="words">
-          <button class="btn-quiet" id="addBtn">Hinzufügen</button></div>`)}</div>`;
+          <button class="btn-quiet" id="addBtn">Hinzufügen</button></div>
+          <p style="margin-top:16px">Große Ansicht für Fernseher oder Tablet:</p>
+          <div class="link" style="text-align:left">${esc(effUrl()+"#tv")}</div>`)}</div>`;
 
   c.querySelectorAll("[data-open-id]").forEach(el=>el.onclick=()=>openSheet(el.getAttribute("data-open-id")));
   c.querySelectorAll('.node[data-open="1"]').forEach(el=>el.onclick=()=>openSheet(el.getAttribute("data-id")));
@@ -948,8 +1102,11 @@ function renderRunning(c){
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
   wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
   wireCasual();
+  wireRules();
   const gb=document.getElementById("galBtn");
   if(gb) gb.onclick=()=>{ photoOpen=!photoOpen; render(); if(photoOpen) refreshPhotos(); };
+  const db=document.getElementById("dlBtn");
+  if(db) db.onclick=downloadAllPhotos;
 
   requestAnimationFrame(drawLinks);
 
@@ -969,7 +1126,9 @@ function renderSheet(ov){
   const a=teamName(m.teamAId), b=teamName(m.teamBId);
   const hasPhoto=!!ui.photo, picked=ui.pick;
   ov.innerHTML=`<div class="overlay"><div class="sheet">
-    <div class="versus"><div class="t">${esc(a)}</div><div class="mid">gegen</div><div class="t">${esc(b)}</div></div>
+    <div class="versus"><div class="t">${esc(a)}</div><div class="sub-names">${esc(teamPlayers(m.teamAId))}</div>
+      <div class="mid">gegen</div>
+      <div class="t">${esc(b)}</div><div class="sub-names">${esc(teamPlayers(m.teamBId))}</div></div>
 
     <div class="step ${hasPhoto?"":"active"}">
       <div class="n">Schritt 1 — Beweisfoto</div>
@@ -1019,11 +1178,14 @@ function standings(){
 }
 async function renderDone(c){
   const champ=championOf(core,M);
-  c.innerHTML=`<div class="champ"><div class="label">Turniersieger</div><h1>${esc(teamName(champ)||"—")}</h1></div>
+  c.innerHTML=`<div class="champ"><div class="label">Turniersieger</div><h1>${esc(teamName(champ)||"—")}</h1>
+      <div style="color:var(--muted);margin-top:6px">${esc(teamPlayers(champ))}</div></div>
     <div class="card"><h2>Endstand</h2>${standings().map((r,i)=>
-      `<div class="rank"><span class="pos">${i+1}</span><span>${esc(teamName(r.id))}</span><span class="rec">${r.w}:${r.l}</span></div>`).join("")}</div>
+      `<div class="rank"><span class="pos">${i+1}</span><span>${esc(teamName(r.id))}<br><span style="opacity:.55;font-size:.8rem">${esc(teamPlayers(r.id))}</span></span><span class="rec">${r.w}:${r.l}</span></div>`).join("")}</div>
     ${casualHTML()}
-    <div class="card"><h2>Die Beweisfotos</h2><div class="gallery" id="g"></div><p id="gs">Wird geladen …</p></div>
+    <div class="card"><h2>Die Beweisfotos</h2><div class="gallery" id="g"></div><p id="gs">Wird geladen …</p>
+      <button class="btn-quiet" id="dlBtn">Alle Fotos herunterladen</button></div>
+    ${rulesHTML()}
     <a class="adminlink" id="al">Admin</a>
     <div id="ap" style="display:none;margin-top:12px">${adminHTML("Admin",[
       {id:"undo",label:"Letztes Ergebnis zurücknehmen",ask:true,
@@ -1033,7 +1195,10 @@ async function renderDone(c){
     ])}</div>`;
   wireAdminToggle();
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
-  wireCasual();
+  wireCasual(); wireRules();
+  const db=document.getElementById("dlBtn");
+  if(db) db.onclick=downloadAllPhotos;
+  await refreshPhotos();
   const g=document.getElementById("g"), gs=document.getElementById("gs");
   try{
     const l=await window.storage.list(K_PHOTO,true);
@@ -1064,6 +1229,7 @@ async function tick(){
   if(JSON.stringify([core,Object.keys(results).sort()])!==before || photoKeys.length!==nPhotos) render();
 }
 window.addEventListener("resize",()=>requestAnimationFrame(drawLinks));
+window.addEventListener("hashchange",()=>location.reload());
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tick(); });
 (async function init(){
   if(!SB_READY){
