@@ -353,6 +353,31 @@ let core=blankCore(), results={}, M={};
 let me=null, seenGuide=false, online=true;
 let ui={sheet:null,pick:null,cups:null,photo:null,editLink:false,editName:false,confirm:null};
 let adminOk=false;
+let photoKeys=[], photoCache={}, photoOpen=false, photoLoading=false;
+async function refreshPhotos(){
+  try{ const l=await window.storage.list(K_PHOTO,true); photoKeys=(l&&l.keys)?l.keys:[]; }
+  catch(e){ return; }
+  if(!photoOpen) return;
+  const missing=photoKeys.filter(k=>!photoCache[k]);
+  if(!missing.length) return;
+  photoLoading=true; render();
+  for(const k of missing){
+    try{ const r=await window.storage.get(k,true); if(r&&r.value) photoCache[k]=r.value; }catch(e){}
+  }
+  photoLoading=false; render();
+}
+function galleryHTML(){
+  const n=photoKeys.length;
+  if(!n) return `<div class="card" style="margin-top:26px"><h2>Fotos</h2>
+    <p>Noch keine. Nach dem ersten eingetragenen Ergebnis erscheint hier das erste Bild.</p></div>`;
+  const shown=photoKeys.filter(k=>photoCache[k]);
+  return `<div class="card" style="margin-top:26px"><h2>Fotos</h2>
+    <p>${n} ${n===1?"Bild":"Bilder"} bisher.</p>
+    <button class="btn-quiet" id="galBtn">${photoOpen?"Ausblenden":"Anzeigen"}</button>
+    ${photoOpen?`${shown.length?`<div class="gallery">${shown.map(k=>`<img src="${photoCache[k]}" alt="Foto vom Spiel">`).join("")}</div>`:""}
+      ${photoLoading?`<p style="margin-top:10px">Wird geladen …</p>`:""}`:""}
+  </div>`;
+}
 function effUrl(){ return core.shareUrl || (location.origin+location.pathname); }
 function linkFormHTML(){
   return `<div><input type="text" id="lki" inputmode="url" autocomplete="off" placeholder="https://…" value="${esc(effUrl())}">
@@ -536,6 +561,7 @@ async function saveResult(matchId,winnerId,cups){
   catch(e){ toast("Ergebnis konnte nicht gespeichert werden."); return false; }
   if(ui.photo){ try{ await window.storage.set(K_PHOTO+matchId,ui.photo,true); }catch(e){ toast("Ergebnis gespeichert, Foto war zu groß."); } }
   await pullAll();
+  refreshPhotos();
   if(core.status==="running"&&championOf(core,M)){ core.status="done"; await pushCore(); }
   else { formLate(); if(core.queue.length===0&&Object.keys(core.matches).length) await pushCore(); }
   return true;
@@ -556,6 +582,7 @@ async function resetAll(){
     try{ const l=await window.storage.list(pre,true); if(l&&l.keys) for(const k of l.keys) await window.storage.delete(k,true); }catch(e){}
   }
   await pushCore(); recompute();
+  photoKeys=[]; photoCache={}; photoOpen=false;
   ui={sheet:null,pick:null,cups:null,photo:null,editLink:false,editName:false,confirm:null};
   render();
 }
@@ -786,7 +813,7 @@ function renderRunning(c){
   </div>`;
 
   c.innerHTML=(online?"":'<div class="offline">Keine Verbindung zum Turnier. Seite neu laden.</div>')
-    + head + brackets + late
+    + head + brackets + galleryHTML() + late
     + `<a class="adminlink" id="al">Admin</a>
        <div id="ap" style="display:none;margin-top:12px">${adminHTML("Korrekturen",[
          {id:"undo",label:"Letztes Ergebnis zurücknehmen",ask:true,
@@ -803,6 +830,8 @@ function renderRunning(c){
   wireAdminToggle();
   wireAdmin({ undo:{run:undoLast,ask:true}, reset:{run:resetAll,ask:true} });
   wireAction("addnm","addBtn",()=>{ const el=document.getElementById("addnm"); if(el) addPlayerByAdmin(el.value); });
+  const gb=document.getElementById("galBtn");
+  if(gb) gb.onclick=()=>{ photoOpen=!photoOpen; render(); if(photoOpen) refreshPhotos(); };
 
   requestAnimationFrame(drawLinks);
 
@@ -906,7 +935,9 @@ async function tick(){
   if(ui.sheet) return;                              // nicht mitten im Eintragen
   const before=JSON.stringify([core,Object.keys(results).sort()]);
   await pullAll();
-  if(JSON.stringify([core,Object.keys(results).sort()])!==before) render();
+  const nPhotos=photoKeys.length;
+  if(core.status!=="registration") await refreshPhotos();
+  if(JSON.stringify([core,Object.keys(results).sort()])!==before || photoKeys.length!==nPhotos) render();
 }
 window.addEventListener("resize",()=>requestAnimationFrame(drawLinks));
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tick(); });
